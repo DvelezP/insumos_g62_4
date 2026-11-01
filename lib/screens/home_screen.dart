@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'catalog_screen.dart';
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -9,22 +11,34 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Solicitudes de insumos'),
       ),
-      body: const Center(
+      body: Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.inventory_2_outlined, size: 64),
-              SizedBox(height: 16),
-              Text(
+              const Icon(Icons.inventory_2_outlined, size: 64),
+              const SizedBox(height: 16),
+              const Text(
                 'Bienvenido',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 'Aquí podrás consultar insumos y gestionar solicitudes.',
                 textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => const CatalogScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.list_alt),
+                label: const Text('Ver catálogo de ejemplo'),
               ),
             ],
           ),

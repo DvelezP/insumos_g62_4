@@ -1,5 +1,5 @@
 name: insumos_g62_4
-description: "A new Flutter project."
+description: "Aplicación Flutter para gestionar solicitudes internas de insumos."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -90,6 +90,7 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
 
 
 

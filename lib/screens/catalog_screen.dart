@@ -57,7 +57,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
   Future<void> _openRequestForm() async {
     if (_selectedInsumos.isEmpty) return;
 
-    final created = await Navigator.of(context).push<bool>(
+    // null: el usuario volvió sin crear la solicitud.
+    final sincronizada = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (context) => CreateRequestScreen(
           insumos: _selectedInsumos.values.toList(),
@@ -65,12 +66,18 @@ class _CatalogScreenState extends State<CatalogScreen> {
         ),
       ),
     );
-    if (created == true && mounted) {
-      setState(_selectedInsumos.clear);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Solicitud guardada correctamente.')),
-      );
-    }
+    if (sincronizada == null || !mounted) return;
+
+    setState(_selectedInsumos.clear);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          sincronizada
+              ? 'Solicitud guardada y sincronizada con Firestore.'
+              : 'Solicitud guardada en el dispositivo. Queda pendiente de sincronización.',
+        ),
+      ),
+    );
   }
 
   @override

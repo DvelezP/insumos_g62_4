@@ -54,8 +54,8 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             )
             .toList(),
       );
-      await widget.repository.guardar(solicitud);
-      if (mounted) Navigator.of(context).pop(true);
+      final sincronizada = await widget.repository.guardar(solicitud);
+      if (mounted) Navigator.of(context).pop(sincronizada);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -148,7 +148,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'La solicitud se guardará en este dispositivo con estado SOLICITADA.',
+              'La solicitud se guarda en este dispositivo con estado SOLICITADA y se envía a Firestore cuando hay conexión.',
               textAlign: TextAlign.center,
             ),
           ],

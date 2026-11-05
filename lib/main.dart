@@ -1,13 +1,32 @@
 import 'package:flutter/material.dart';
 
+import 'config/api_config.dart';
+import 'repositories/insumo_repository.dart';
+import 'repositories/solicitud_repository.dart';
 import 'screens/home_screen.dart';
+import 'services/insumo_http_service.dart';
 
 void main() {
-  runApp(const InsumosApp());
+  final repository = InsumoRepository(
+    service: InsumoHttpService(url: Uri.parse(kInsumosUrl)),
+  );
+  runApp(
+    InsumosApp(
+      repository: repository,
+      solicitudRepository: SolicitudRepository(),
+    ),
+  );
 }
 
 class InsumosApp extends StatelessWidget {
-  const InsumosApp({super.key});
+  const InsumosApp({
+    super.key,
+    required this.repository,
+    required this.solicitudRepository,
+  });
+
+  final InsumoRepository repository;
+  final SolicitudRepository solicitudRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +36,10 @@ class InsumosApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: const HomeScreen(),
+      home: HomeScreen(
+        repository: repository,
+        solicitudRepository: solicitudRepository,
+      ),
     );
   }
 }

@@ -2,7 +2,10 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  AppDatabase._();
+  AppDatabase._([this._path]);
+
+  // Base temporal en memoria para las pruebas automatizadas.
+  factory AppDatabase.enMemoria() => AppDatabase._(inMemoryDatabasePath);
 
   static final AppDatabase instance = AppDatabase._();
   static const _databaseName = 'insumos_g62_4.db';
@@ -10,13 +13,14 @@ class AppDatabase {
   static const tableSolicitudes = 'solicitudes';
   static const tableInsumos = 'insumos';
 
+  final String? _path;
   Database? _database;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
 
-    final databasePath = await getDatabasesPath();
-    final fullPath = path.join(databasePath, _databaseName);
+    final fullPath =
+        _path ?? path.join(await getDatabasesPath(), _databaseName);
     _database = await openDatabase(
       fullPath,
       version: _databaseVersion,
@@ -29,6 +33,11 @@ class AppDatabase {
       },
     );
     return _database!;
+  }
+
+  Future<void> cerrar() async {
+    await _database?.close();
+    _database = null;
   }
 
   Future<void> _createSolicitudesTable(DatabaseExecutor db) async {

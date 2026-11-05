@@ -20,6 +20,7 @@ class Solicitud {
     required List<LineaSolicitud> lineas,
     this.aprobadorId,
     this.fechaDecision,
+    this.pendienteSync = true,
   }) : lineas = List.unmodifiable(lineas) {
     if (this.lineas.isEmpty || this.lineas.length > 5) {
       throw ArgumentError.value(
@@ -46,6 +47,9 @@ class Solicitud {
   final List<LineaSolicitud> lineas;
   final String? aprobadorId;
   final DateTime? fechaDecision;
+
+  // Estado local: indica si la solicitud aún no se ha confirmado en Firestore.
+  final bool pendienteSync;
 
   factory Solicitud.fromJson(Map<String, dynamic> json) {
     final lineasJson = json['lineas'] as List<dynamic>;
@@ -86,6 +90,7 @@ class Solicitud {
     List<LineaSolicitud>? lineas,
     String? aprobadorId,
     DateTime? fechaDecision,
+    bool? pendienteSync,
     bool limpiarAprobadorId = false,
     bool limpiarFechaDecision = false,
   }) {
@@ -99,6 +104,7 @@ class Solicitud {
       fechaDecision: limpiarFechaDecision
           ? null
           : fechaDecision ?? this.fechaDecision,
+      pendienteSync: pendienteSync ?? this.pendienteSync,
     );
   }
 }

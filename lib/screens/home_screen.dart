@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/solicitud.dart';
 import '../repositories/insumo_repository.dart';
 import '../repositories/solicitud_repository.dart';
 import 'catalog_screen.dart';
@@ -133,7 +134,7 @@ class _DashboardScreen extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text(
-          'Las solicitudes se guardan en este dispositivo y quedan pendientes de sincronización.',
+          'Las solicitudes se guardan primero en este dispositivo y se sincronizan con Firestore cuando hay conexión.',
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
@@ -152,7 +153,8 @@ class _RequestsScreen extends StatefulWidget {
 }
 
 class _RequestsScreenState extends State<_RequestsScreen> {
-  late Future _requestsFuture;
+  late Future<List<Solicitud>> _requestsFuture;
+  bool _syncing = false;
 
   @override
   void initState() {
@@ -164,9 +166,35 @@ class _RequestsScreenState extends State<_RequestsScreen> {
     _requestsFuture = widget.repository.listarPorEmpleado(empleadoDemoId);
   }
 
+  Future<void> _syncPending() async {
+    setState(() => _syncing = true);
+    try {
+      final resultado = await widget.repository.sincronizarPendientes();
+      if (!mounted) return;
+      final message = resultado.pendientes == 0
+          ? 'Se sincronizaron ${resultado.sincronizadas} solicitud(es).'
+          : '${resultado.pendientes} solicitud(es) siguen pendientes. Revisa tu conexión e inténtalo de nuevo.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo sincronizar. Inténtalo de nuevo.'),
+        ),
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      _loadRequests();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
+    return FutureBuilder<List<Solicitud>>(
       future: _requestsFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -188,7 +216,7 @@ class _RequestsScreenState extends State<_RequestsScreen> {
           );
         }
 
-        final solicitudes = snapshot.data ?? [];
+        final solicitudes = snapshot.data ?? const <Solicitud>[];
         if (solicitudes.isEmpty) {
           return const Center(
             child: Padding(
@@ -210,42 +238,125 @@ class _RequestsScreenState extends State<_RequestsScreen> {
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: solicitudes.length,
-          itemBuilder: (context, index) {
-            final solicitud = solicitudes[index];
-            final fecha = solicitud.fechaCreacion.toLocal();
-            final fechaTexto =
-                '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
-            final cantidadTotal = solicitud.lineas.fold<int>(
-              0,
-              (total, linea) => total + linea.cantidadSolicitada,
-            );
-            return Card(
-              child: ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.assignment_outlined),
-                ),
-                title: Text('Solicitud ${solicitud.id}'),
-                subtitle: Text(
-                  '$fechaTexto · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)',
-                ),
-                trailing: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Chip(label: Text(solicitud.estado.name)),
-                    const Text(
-                      'Pendiente sync',
-                      style: TextStyle(fontSize: 10),
-                    ),
-                  ],
-                ),
+        final pendientes = solicitudes
+            .where((solicitud) => solicitud.pendienteSync)
+            .length;
+
+        return Column(
+          children: [
+            if (pendientes > 0)
+              _PendingSyncBanner(
+                pendientes: pendientes,
+                syncing: _syncing,
+                onSync: _syncPending,
               ),
-            );
-          },
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: solicitudes.length,
+                itemBuilder: (context, index) {
+                  final solicitud = solicitudes[index];
+                  final fecha = solicitud.fechaCreacion.toLocal();
+                  final fechaTexto =
+                      '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
+                  final cantidadTotal = solicitud.lineas.fold<int>(
+                    0,
+                    (total, linea) => total + linea.cantidadSolicitada,
+                  );
+                  return Card(
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        child: Icon(Icons.assignment_outlined),
+                      ),
+                      title: Text('Solicitud ${solicitud.id}'),
+                      subtitle: Text(
+                        '$fechaTexto · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)',
+                      ),
+                      trailing: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Chip(label: Text(solicitud.estado.name)),
+                          _SyncStatusLabel(pendiente: solicitud.pendienteSync),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+}
+
+class _PendingSyncBanner extends StatelessWidget {
+  const _PendingSyncBanner({
+    required this.pendientes,
+    required this.syncing,
+    required this.onSync,
+  });
+
+  final int pendientes;
+  final bool syncing;
+  final VoidCallback onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: colors.tertiaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_upload_outlined, color: colors.onTertiaryContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '$pendientes solicitud(es) pendiente(s) de sincronizar',
+              style: TextStyle(color: colors.onTertiaryContainer),
+            ),
+          ),
+          TextButton(
+            onPressed: syncing ? null : onSync,
+            child: Text(syncing ? 'Enviando...' : 'Sincronizar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SyncStatusLabel extends StatelessWidget {
+  const _SyncStatusLabel({required this.pendiente});
+
+  final bool pendiente;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          pendiente ? Icons.cloud_off_outlined : Icons.cloud_done_outlined,
+          size: 12,
+          color: pendiente ? colors.error : colors.primary,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          pendiente ? 'Pendiente' : 'Sincronizada',
+          style: const TextStyle(fontSize: 10),
+        ),
+      ],
     );
   }
 }

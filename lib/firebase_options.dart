@@ -53,10 +53,10 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBe867FsOLKVdzfV_lRCs9U7tDqTecBw5Y',
-    appId: '1:121719356679:android:46289f844204f84b4499a2',
-    messagingSenderId: '121719356679',
-    projectId: 'insumos-g62-4',
-    storageBucket: 'insumos-g62-4.firebasestorage.app',
+    apiKey: 'AIzaSyBpsheDhSnTLEW7Hjk0DrpXqRxk-KbWPGw',
+    appId: '1:1049214466397:android:9dab07e4986c7f6ffb10b4',
+    messagingSenderId: '1049214466397',
+    projectId: 'insumosg62',
+    storageBucket: 'insumosg62.firebasestorage.app',
   );
 }

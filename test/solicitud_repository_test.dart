@@ -15,6 +15,9 @@ class FakeSolicitudRemoteDataSource implements SolicitudRemoteDataSource {
   final List<String> enviadas = [];
 
   @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  @override
   FirebaseFirestore get firestore => throw UnimplementedError();
 
   @override
@@ -92,13 +95,33 @@ void main() {
   });
 
   group('Sincronizar pendientes', () {
+    test('No envía solicitudes pendientes de otra cuenta', () async {
+      remote.shouldFail = true;
+      await repository.guardar(crearSolicitud('s-actual'));
+      await repository.guardar(
+        crearSolicitud('s-otra-cuenta').copyWith(empleadoId: 'otro-empleado'),
+      );
+
+      remote.shouldFail = false;
+      final resultado = await repository.sincronizarPendientes(
+        empleadoId: 'empleado-prueba',
+      );
+
+      expect(resultado.sincronizadas, 1);
+      expect(remote.enviadas, ['s-actual']);
+      final ajenas = await repository.listarPorEmpleado('otro-empleado');
+      expect(ajenas.single.pendienteSync, isTrue);
+    });
+
     test('Envía las pendientes cuando Firestore vuelve a responder', () async {
       remote.shouldFail = true;
       await repository.guardar(crearSolicitud('s-1'));
       await repository.guardar(crearSolicitud('s-2'));
 
       remote.shouldFail = false;
-      final resultado = await repository.sincronizarPendientes();
+      final resultado = await repository.sincronizarPendientes(
+        empleadoId: 'empleado-prueba',
+      );
 
       final solicitudes = await repository.listarPorEmpleado('empleado-prueba');
       expect(resultado.sincronizadas, 2);
@@ -109,7 +132,9 @@ void main() {
     test('No reenvía las solicitudes ya sincronizadas', () async {
       await repository.guardar(crearSolicitud('s-1'));
 
-      final resultado = await repository.sincronizarPendientes();
+      final resultado = await repository.sincronizarPendientes(
+        empleadoId: 'empleado-prueba',
+      );
 
       expect(resultado.sincronizadas, 0);
       expect(resultado.pendientes, 0);
@@ -122,7 +147,9 @@ void main() {
         remote.shouldFail = true;
         await repository.guardar(crearSolicitud('s-1'));
 
-        final resultado = await repository.sincronizarPendientes();
+        final resultado = await repository.sincronizarPendientes(
+          empleadoId: 'empleado-prueba',
+        );
 
         expect(resultado.sincronizadas, 0);
         expect(resultado.pendientes, 1);

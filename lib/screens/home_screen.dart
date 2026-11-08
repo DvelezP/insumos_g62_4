@@ -1,20 +1,33 @@
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/solicitud.dart';
+import '../models/perfil_usuario.dart';
+import '../remote/solicitud_remote_data_source.dart';
 import '../repositories/insumo_repository.dart';
 import '../repositories/solicitud_repository.dart';
+import '../services/auth_service.dart';
 import 'catalog_screen.dart';
 import 'create_request_screen.dart';
+import 'operacion_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.repository,
     required this.solicitudRepository,
+    this.perfil,
+    this.authService,
   });
 
   final InsumoRepository repository;
   final SolicitudRepository solicitudRepository;
+  final PerfilUsuario? perfil;
+  final AuthService? authService;
+  SolicitudRemoteDataSource? get remote => solicitudRepository.remote;
+
+  String get empleadoId => perfil?.uid ?? empleadoDemoId;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -23,11 +36,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  static const List<String> _titles = [
-    'Inicio',
-    'Catálogo de insumos',
-    'Mis solicitudes',
-  ];
+  List<String> get _titles => switch (widget.perfil?.rol ??
+      RolUsuario.empleado) {
+    RolUsuario.empleado => ['Inicio', 'Catálogo de insumos', 'Mis solicitudes'],
+    RolUsuario.supervisor => ['Inicio', 'Bandeja de supervisión'],
+    RolUsuario.bodega => ['Inicio', 'Entregas e inventario'],
+  };
 
   void _openTab(int index) {
     setState(() => _selectedIndex = index);
@@ -35,44 +49,84 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      _DashboardScreen(onOpenCatalog: () => _openTab(1)),
-      CatalogScreen(
-        repository: widget.repository,
-        solicitudRepository: widget.solicitudRepository,
-      ),
-      _RequestsScreen(repository: widget.solicitudRepository),
+    final rol = widget.perfil?.rol ?? RolUsuario.empleado;
+    final pages = <Widget>[
+      _DashboardScreen(onOpenCatalog: () => _openTab(1), perfil: widget.perfil),
+      if (rol == RolUsuario.empleado)
+        CatalogScreen(
+          repository: widget.repository,
+          solicitudRepository: widget.solicitudRepository,
+          empleadoId: widget.empleadoId,
+          area: widget.perfil?.area ?? 'General',
+        ),
+      if (rol == RolUsuario.empleado)
+        _RequestsScreen(
+          repository: widget.solicitudRepository,
+          empleadoId: widget.empleadoId,
+        ),
+      if (rol != RolUsuario.empleado)
+        OperacionScreen(
+          perfil: widget.perfil!,
+          remote: widget.remote,
+          insumoRepository: widget.repository,
+        ),
     ];
 
     return Scaffold(
-      appBar: AppBar(title: Text(_titles[_selectedIndex])),
+      appBar: AppBar(
+        title: Text(_titles[_selectedIndex]),
+        actions: [
+          if (widget.perfil != null)
+            IconButton(
+              tooltip: 'Cerrar sesión',
+              icon: const Icon(Icons.logout),
+              onPressed: widget.authService?.cerrarSesion,
+            ),
+        ],
+      ),
       body: SafeArea(child: pages[_selectedIndex]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _openTab,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            label: 'Inicio',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            label: 'Insumos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            label: 'Solicitudes',
-          ),
-        ],
+        destinations: rol == RolUsuario.empleado
+            ? const [
+                NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  label: 'Inicio',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.inventory_2_outlined),
+                  label: 'Insumos',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  label: 'Solicitudes',
+                ),
+              ]
+            : [
+                const NavigationDestination(
+                  icon: Icon(Icons.home_outlined),
+                  label: 'Inicio',
+                ),
+                NavigationDestination(
+                  icon: Icon(
+                    rol == RolUsuario.supervisor
+                        ? Icons.fact_check_outlined
+                        : Icons.local_shipping_outlined,
+                  ),
+                  label: rol == RolUsuario.supervisor ? 'Supervisar' : 'Bodega',
+                ),
+              ],
       ),
     );
   }
 }
 
 class _DashboardScreen extends StatelessWidget {
-  const _DashboardScreen({required this.onOpenCatalog});
+  const _DashboardScreen({required this.onOpenCatalog, this.perfil});
 
   final VoidCallback onOpenCatalog;
+  final PerfilUsuario? perfil;
 
   @override
   Widget build(BuildContext context) {
@@ -97,18 +151,30 @@ class _DashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Gestión de insumos',
+                perfil == null
+                    ? 'Gestión de insumos'
+                    : 'Hola, ${perfil!.correo}',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Consulta los insumos disponibles y lleva el seguimiento de tus solicitudes.',
+              Text(
+                perfil?.rol == RolUsuario.supervisor
+                    ? 'Revisa solicitudes del equipo y toma decisiones registradas.'
+                    : perfil?.rol == RolUsuario.bodega
+                    ? 'Registra entregas parciales y gestiona existencias.'
+                    : 'Consulta los insumos disponibles y lleva el seguimiento de tus solicitudes.',
               ),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: onOpenCatalog,
                 icon: const Icon(Icons.search),
-                label: const Text('Explorar insumos'),
+                label: Text(
+                  perfil?.rol == RolUsuario.supervisor
+                      ? 'Abrir supervisión'
+                      : perfil?.rol == RolUsuario.bodega
+                      ? 'Abrir bodega'
+                      : 'Explorar insumos',
+                ),
               ),
             ],
           ),
@@ -119,22 +185,58 @@ class _DashboardScreen extends StatelessWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.list_alt),
-            title: const Text('Catálogo'),
-            subtitle: const Text('Consulta y selecciona insumos'),
+            title: Text(
+              perfil?.rol == RolUsuario.supervisor
+                  ? 'Bandeja de supervisión'
+                  : perfil?.rol == RolUsuario.bodega
+                  ? 'Entregas e inventario'
+                  : 'Catálogo',
+            ),
+            subtitle: Text(
+              perfil?.rol == RolUsuario.empleado || perfil == null
+                  ? 'Consulta y selecciona insumos'
+                  : 'Gestiona las operaciones del proceso',
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: onOpenCatalog,
           ),
         ),
-        const Card(
-          child: ListTile(
-            leading: Icon(Icons.assignment_outlined),
-            title: Text('Solicitudes'),
-            subtitle: Text('Crea solicitudes y consulta su estado'),
+        if (perfil == null || perfil?.rol == RolUsuario.empleado)
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.assignment_outlined),
+              title: Text('Solicitudes'),
+              subtitle: Text('Crea solicitudes y consulta su estado'),
+            ),
           ),
-        ),
+        if (kDebugMode)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('Probar evento de Crashlytics'),
+              subtitle: const Text('Solo aparece en modo de desarrollo.'),
+              onTap: () async {
+                await FirebaseCrashlytics.instance.recordError(
+                  StateError('Evento controlado de prueba de Crashlytics.'),
+                  StackTrace.current,
+                  reason: 'Prueba manual desde la aplicación en modo debug',
+                  fatal: false,
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Evento de prueba enviado a Crashlytics.'),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
         const SizedBox(height: 12),
         Text(
-          'Las solicitudes se guardan primero en este dispositivo y se sincronizan con Firestore cuando hay conexión.',
+          perfil == null || perfil?.rol == RolUsuario.empleado
+              ? 'Las solicitudes se guardan primero en este dispositivo y se sincronizan con Firestore cuando hay conexión.'
+              : 'Los cambios de aprobación, entrega e inventario se confirman en Firestore antes de mostrarse como completados.',
           style: Theme.of(context).textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
@@ -144,9 +246,10 @@ class _DashboardScreen extends StatelessWidget {
 }
 
 class _RequestsScreen extends StatefulWidget {
-  const _RequestsScreen({required this.repository});
+  const _RequestsScreen({required this.repository, required this.empleadoId});
 
   final SolicitudRepository repository;
+  final String empleadoId;
 
   @override
   State<_RequestsScreen> createState() => _RequestsScreenState();
@@ -163,13 +266,15 @@ class _RequestsScreenState extends State<_RequestsScreen> {
   }
 
   void _loadRequests() {
-    _requestsFuture = widget.repository.listarPorEmpleado(empleadoDemoId);
+    _requestsFuture = widget.repository.listarPorEmpleado(widget.empleadoId);
   }
 
   Future<void> _syncPending() async {
     setState(() => _syncing = true);
     try {
-      final resultado = await widget.repository.sincronizarPendientes();
+      final resultado = await widget.repository.sincronizarPendientes(
+        empleadoId: widget.empleadoId,
+      );
       if (!mounted) return;
       final message = resultado.pendientes == 0
           ? 'Se sincronizaron ${resultado.sincronizadas} solicitud(es).'
@@ -190,6 +295,67 @@ class _RequestsScreenState extends State<_RequestsScreen> {
       _syncing = false;
       _loadRequests();
     });
+  }
+
+  Future<void> _cancelar(Solicitud solicitud) async {
+    try {
+      await widget.repository.cancelar(solicitud.id, widget.empleadoId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Solicitud cancelada.')));
+      setState(_loadRequests);
+    } catch (error) {
+      if (!mounted) return;
+      final text = error.toString();
+      final message = text.startsWith('Bad state: ')
+          ? text.substring(11)
+          : 'No se pudo cancelar. Confirma que siga solicitada y revisa tu conexión.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      setState(_loadRequests);
+    }
+  }
+
+  Future<void> _descartar(Solicitud solicitud) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Descartar envío rechazado'),
+        content: const Text(
+          'Se eliminará del dispositivo la solicitud que Firebase rechazó por permisos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Descartar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+    try {
+      await widget.repository.descartarSolicitudRechazada(
+        solicitud.id,
+        widget.empleadoId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Envío local descartado.')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo descartar este envío.')),
+        );
+      }
+    }
+    if (mounted) setState(_loadRequests);
   }
 
   @override
@@ -251,6 +417,10 @@ class _RequestsScreenState extends State<_RequestsScreen> {
                 onSync: _syncPending,
               ),
             Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  setState(_loadRequests);
+                  await _requestsFuture;
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: solicitudes.length,
@@ -296,6 +466,63 @@ class _RequestsScreenState extends State<_RequestsScreen> {
                     ),
                   );
                 },
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: solicitudes.length,
+                  itemBuilder: (context, index) {
+                    final solicitud = solicitudes[index];
+                    final fecha = solicitud.fechaCreacion.toLocal();
+                    final fechaTexto =
+                        '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
+                    final cantidadTotal = solicitud.lineas.fold<int>(
+                      0,
+                      (total, linea) => total + linea.cantidadSolicitada,
+                    );
+                    return Card(
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.assignment_outlined),
+                        ),
+                        title: Text('Solicitud ${solicitud.id}'),
+                        subtitle: Text(
+                          '$fechaTexto · Área ${solicitud.area} · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)\n${solicitud.lineas.map((linea) => '${linea.insumoId}: ${linea.cantidadEntregada}/${linea.cantidadSolicitada}').join(' · ')}${solicitud.syncError == null ? '' : '\n${solicitud.syncError}'}',
+                        ),
+                        isThreeLine: true,
+                        trailing: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Chip(label: Text(solicitud.estado.name)),
+                            _SyncStatusLabel(
+                              pendiente: solicitud.pendienteSync,
+                            ),
+                            if (solicitud.pendienteSync &&
+                                solicitud.syncError?.contains(
+                                      'puedes descartarlo',
+                                    ) ==
+                                    true)
+                              IconButton(
+                                tooltip: 'Descartar envío rechazado',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => _descartar(solicitud),
+                                icon: const Icon(Icons.delete_outline),
+                              )
+                            else if (solicitud.estado ==
+                                    EstadoSolicitud.SOLICITADA &&
+                                !solicitud.pendienteSync)
+                              IconButton(
+                                tooltip: 'Cancelar solicitud',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: solicitud.pendienteSync
+                                    ? null
+                                    : () => _cancelar(solicitud),
+                                icon: const Icon(Icons.cancel_outlined),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ],

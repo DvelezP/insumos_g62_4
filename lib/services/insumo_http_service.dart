@@ -7,14 +7,22 @@ import 'package:http/http.dart' as http;
 import '../models/insumo.dart';
 
 class InsumoHttpService {
-  const InsumoHttpService({required this.url});
+  InsumoHttpService({
+    required this.url,
+    http.Client? client,
+    this.timeout = const Duration(seconds: 15),
+  }) : _client = client ?? http.Client();
 
   final Uri url;
+  final http.Client _client;
+  final Duration timeout;
+
+  void cerrar() => _client.close();
 
   Future<List<Insumo>> fetchInsumos() async {
     late final http.Response response;
     try {
-      response = await http.get(url).timeout(const Duration(seconds: 15));
+      response = await _client.get(url).timeout(timeout);
     } on TimeoutException {
       throw const InsumoServiceException(
         'La solicitud tardó demasiado. Revisa tu conexión e inténtalo de nuevo.',

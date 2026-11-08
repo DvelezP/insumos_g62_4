@@ -1,1 +1,31 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"insumos-g62-4","appId":"1:121719356679:android:46289f844204f84b4499a2","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"insumos-g62-4","configurations":{"android":"1:121719356679:android:46289f844204f84b4499a2"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "insumosg62",
+          "appId": "1:1049214466397:android:9dab07e4986c7f6ffb10b4",
+          "fileOutput": "android/app/google-services.json"
+        },
+        "buildConfigurations": {
+          ".": {
+            "projectId": "insumosg62",
+            "appId": "1:1049214466397:android:9dab07e4986c7f6ffb10b4",
+            "fileOutput": "android/app/google-services.json"
+          }
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "insumosg62",
+          "configurations": {
+            "android": "1:1049214466397:android:9dab07e4986c7f6ffb10b4"
+          }
+        }
+      }
+    }
+  }
+}

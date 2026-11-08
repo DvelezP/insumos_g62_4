@@ -18,9 +18,11 @@ class Solicitud {
     required this.fechaCreacion,
     required this.estado,
     required List<LineaSolicitud> lineas,
+    this.area = 'General',
     this.aprobadorId,
     this.fechaDecision,
     this.pendienteSync = true,
+    this.syncError,
   }) : lineas = List.unmodifiable(lineas) {
     if (this.lineas.isEmpty || this.lineas.length > 5) {
       throw ArgumentError.value(
@@ -45,11 +47,13 @@ class Solicitud {
   final DateTime fechaCreacion;
   final EstadoSolicitud estado;
   final List<LineaSolicitud> lineas;
+  final String area;
   final String? aprobadorId;
   final DateTime? fechaDecision;
 
   // Estado local: indica si la solicitud aún no se ha confirmado en Firestore.
   final bool pendienteSync;
+  final String? syncError;
 
   factory Solicitud.fromJson(Map<String, dynamic> json) {
     final lineasJson = json['lineas'] as List<dynamic>;
@@ -65,6 +69,7 @@ class Solicitud {
             ),
           )
           .toList(),
+      area: json['area'] as String? ?? 'General',
       aprobadorId: json['aprobadorId'] as String?,
       fechaDecision: json['fechaDecision'] == null
           ? null
@@ -78,6 +83,7 @@ class Solicitud {
     'fechaCreacion': fechaCreacion.toIso8601String(),
     'estado': estado.name,
     'lineas': lineas.map((linea) => linea.toJson()).toList(),
+    'area': area,
     'aprobadorId': aprobadorId,
     'fechaDecision': fechaDecision?.toIso8601String(),
   };
@@ -88,9 +94,12 @@ class Solicitud {
     DateTime? fechaCreacion,
     EstadoSolicitud? estado,
     List<LineaSolicitud>? lineas,
+    String? area,
     String? aprobadorId,
     DateTime? fechaDecision,
     bool? pendienteSync,
+    String? syncError,
+    bool limpiarSyncError = false,
     bool limpiarAprobadorId = false,
     bool limpiarFechaDecision = false,
   }) {
@@ -100,11 +109,13 @@ class Solicitud {
       fechaCreacion: fechaCreacion ?? this.fechaCreacion,
       estado: estado ?? this.estado,
       lineas: lineas ?? this.lineas,
+      area: area ?? this.area,
       aprobadorId: limpiarAprobadorId ? null : aprobadorId ?? this.aprobadorId,
       fechaDecision: limpiarFechaDecision
           ? null
           : fechaDecision ?? this.fechaDecision,
       pendienteSync: pendienteSync ?? this.pendienteSync,
+      syncError: limpiarSyncError ? null : syncError ?? this.syncError,
     );
   }
 }

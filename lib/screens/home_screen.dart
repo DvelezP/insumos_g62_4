@@ -269,14 +269,28 @@ class _RequestsScreenState extends State<_RequestsScreen> {
                         child: Icon(Icons.assignment_outlined),
                       ),
                       title: Text('Solicitud ${solicitud.id}'),
-                      subtitle: Text(
-                        '$fechaTexto · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)',
-                      ),
-                      trailing: Column(
-                        mainAxisSize: MainAxisSize.min,
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Chip(label: Text(solicitud.estado.name)),
-                          _SyncStatusLabel(pendiente: solicitud.pendienteSync),
+                          Text(
+                            '$fechaTexto · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)',
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Chip(
+                                label: Text(solicitud.estado.name),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              _SyncStatusLabel(
+                                pendiente: solicitud.pendienteSync,
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),

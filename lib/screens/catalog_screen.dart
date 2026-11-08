@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/insumo.dart';
 import '../repositories/insumo_repository.dart';
@@ -11,10 +12,14 @@ class CatalogScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.solicitudRepository,
+    this.empleadoId = empleadoDemoId,
+    this.area = 'General',
   });
 
   final InsumoRepository repository;
   final SolicitudRepository solicitudRepository;
+  final String empleadoId;
+  final String area;
 
   @override
   State<CatalogScreen> createState() => _CatalogScreenState();
@@ -30,6 +35,27 @@ class _CatalogScreenState extends State<CatalogScreen> {
   void initState() {
     super.initState();
     _loadFuture = widget.repository.obtenerInsumos();
+    _cargarCategoriaGuardada();
+  }
+
+  Future<void> _cargarCategoriaGuardada() async {
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final categoria = preferences.getString('catalogo_categoria') ?? 'Todos';
+      if (mounted) setState(() => _selectedCategory = categoria);
+    } catch (_) {
+      // La preferencia es opcional; el catálogo sigue usando "Todos".
+    }
+  }
+
+  Future<void> _seleccionarCategoria(String categoria) async {
+    setState(() => _selectedCategory = categoria);
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString('catalogo_categoria', categoria);
+    } catch (_) {
+      // La selección actual sigue funcionando aunque no se pueda guardar.
+    }
   }
 
   void _loadInsumos() {
@@ -63,6 +89,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
         builder: (context) => CreateRequestScreen(
           insumos: _selectedInsumos.values.toList(),
           repository: widget.solicitudRepository,
+          empleadoId: widget.empleadoId,
+          area: widget.area,
         ),
       ),
     );
@@ -114,19 +142,35 @@ class _CatalogScreenState extends State<CatalogScreen> {
             'Todos',
             ...{for (final item in insumos) item.categoria},
           ];
+          final selectedCategory = categories.contains(_selectedCategory)
+              ? _selectedCategory
+              : 'Todos';
           final filteredItems = insumos.where((item) {
             final search = _searchText.toLowerCase();
             final matchesText = '${item.nombre} ${item.descripcion}'
                 .toLowerCase()
                 .contains(search);
             final matchesCategory =
-                _selectedCategory == 'Todos' ||
-                item.categoria == _selectedCategory;
+                selectedCategory == 'Todos' ||
+                item.categoria == selectedCategory;
             return matchesText && matchesCategory;
           }).toList();
 
           return Column(
             children: [
+              if (widget.repository.usandoCatalogoLocal)
+                MaterialBanner(
+                  content: const Text(
+                    'Sin conexión: se muestra la última copia guardada del catálogo.',
+                  ),
+                  leading: const Icon(Icons.cloud_off_outlined),
+                  actions: [
+                    TextButton(
+                      onPressed: _loadInsumos,
+                      child: const Text('Reintentar'),
+                    ),
+                  ],
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: TextField(
@@ -153,9 +197,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
                     final category = categories[index];
                     return ChoiceChip(
                       label: Text(category),
-                      selected: category == _selectedCategory,
-                      onSelected: (_) =>
-                          setState(() => _selectedCategory = category),
+                      selected: category == selectedCategory,
+                      onSelected: (_) => _seleccionarCategoria(category),
                     );
                   },
                 ),

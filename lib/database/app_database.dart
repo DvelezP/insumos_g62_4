@@ -9,7 +9,7 @@ class AppDatabase {
 
   static final AppDatabase instance = AppDatabase._();
   static const _databaseName = 'insumos_g62_4.db';
-  static const _databaseVersion = 2;
+  static const _databaseVersion = 3;
   static const tableSolicitudes = 'solicitudes';
   static const tableInsumos = 'insumos';
 
@@ -30,6 +30,11 @@ class AppDatabase {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) await _createInsumosTable(db);
+        if (oldVersion < 3) {
+          await db.execute(
+            "ALTER TABLE $tableSolicitudes ADD COLUMN area TEXT NOT NULL DEFAULT 'General'",
+          );
+        }
       },
     );
     return _database!;
@@ -45,6 +50,7 @@ class AppDatabase {
       CREATE TABLE $tableSolicitudes (
         id TEXT PRIMARY KEY,
         empleadoId TEXT NOT NULL,
+        area TEXT NOT NULL DEFAULT 'General',
         fechaCreacion TEXT NOT NULL,
         estado TEXT NOT NULL,
         lineasJson TEXT NOT NULL,

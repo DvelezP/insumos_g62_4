@@ -1,110 +1,152 @@
-# G62-4: Solicitudes de insumos
+# G62-4 · Solicitudes de insumos
 
-Aplicación móvil desarrollada con Flutter y Dart para consultar un catálogo y crear solicitudes internas de insumos. El proyecto está preparado para ejecutarse en Android.
+Aplicación Android desarrollada con Flutter y Dart para solicitar insumos internos, aprobar solicitudes, reservar existencias y registrar entregas parciales. El flujo requiere una cuenta autenticada y usa Firebase para compartir cambios entre los roles.
+
+## Estado actual
+
+- **Empleado:** consulta el catálogo remoto, busca y filtra insumos, crea solicitudes de 1 a 5 insumos (1–20 unidades por línea), las consulta y cancela las que siguen solicitadas.
+- **Supervisor:** consulta solicitudes de su área, aprueba o rechaza las solicitudes de otras personas. La aprobación reserva todas las líneas en una transacción Firestore.
+- **Bodega:** crea el stock inicial, registra ajustes con motivo y actor, y hace entregas parciales. Una entrega actualiza el inventario reservado y físico en una transacción.
+- **Autenticación:** registro e inicio de sesión con correo y contraseña. El registro crea un perfil de empleado. Los roles privilegiados se asignan desde Firebase Console.
+- **Modo local:** las solicitudes se guardan primero en SQLite. Si no se confirma el envío remoto quedan pendientes; los reintentos solo consideran la cuenta activa. El catálogo conserva una copia local para consultas posteriores sin conexión.
+- **Preferencias:** el filtro de categoría seleccionado se guarda en SharedPreferences y se restaura al volver a abrir el catálogo.
+- **Diagnóstico:** Crashlytics captura excepciones no controladas. En modo debug aparece una opción para enviar un evento no fatal de prueba; no aparece en release.
+
+El catálogo configurado es el conjunto público de medicamentos vigentes de INVIMA (`datos.gov.co`, 10 registros), usado como fuente HTTP de referencia. Si el equipo necesita otro tipo de insumos, debe cambiar la URL y el mapeo descritos abajo.
 
 ## Requisitos
 
-- Flutter y Dart instalados.
-- Android Studio con Android SDK y al menos un emulador Android configurado, o un teléfono Android con depuración USB habilitada.
-- Visual Studio Code o Android Studio para editar el proyecto.
+- Flutter y Dart instalados, Android Studio con Android SDK y un emulador o teléfono Android.
+- Proyecto Firebase `insumosg62` con **Authentication (correo/contraseña)**, **Cloud Firestore** y **Crashlytics** habilitados.
+- Reglas de Firestore de este repositorio publicadas en ese proyecto.
+
+## Configuración de Firebase
+
+### CLI necesarias en Windows
+
+`flutter pub add firebase_core firebase_auth cloud_firestore` instala paquetes de Dart; no instala los comandos `firebase` ni `flutterfire`.
+
+1. Instala Firebase CLI. En Windows puedes usar el [ejecutable oficial independiente](https://firebase.google.com/docs/cli) y no necesitas instalar Node.js.
+2. Abre PowerShell en la raíz del proyecto y autoriza tu cuenta:
+
+   ```powershell
+   firebase login
+   firebase projects:list
+   ```
+
+   Confirma que aparezca `insumosg62` y que sea el proyecto al que tienes acceso.
+
+3. Instala FlutterFire CLI una sola vez y agrega sus ejecutables al `PATH` del usuario:
+
+   ```powershell
+   dart pub global activate flutterfire_cli
+   $env:Path += ";$env:LOCALAPPDATA\Pub\Cache\bin"
+   flutterfire --version
+   ```
+
+   Después de agregar el `PATH` de forma permanente, cierra y vuelve a abrir PowerShell.
+
+4. Desde la carpeta del proyecto, configura solo Android en el proyecto existente:
+
+   ```powershell
+   flutterfire configure --project=insumosg62 --platforms=android
+   ```
+
+   El paquete Android registrado debe ser `co.edu.udem.insumos_g62_4`. El proyecto ya contiene `.firebaserc`, `firebase.json`, `lib/firebase_options.dart` y `android/app/google-services.json` para `insumosg62`.
+
+### Servicios en Firebase Console
+
+1. En Firebase Console, habilita el proveedor **Correo electrónico/contraseña** en Authentication.
+2. Comprueba que `android/app/google-services.json` y `lib/firebase_options.dart` correspondan al mismo proyecto Firebase y al identificador Android `co.edu.udem.insumos_g62_4`.
+3. Publica `firestore.rules` desde la consola o con Firebase CLI (`firebase deploy --only firestore:rules`). No uses reglas abiertas de lectura/escritura.
+4. Las cuentas que se registran desde la aplicación crean su perfil en `usuarios/{uid}` con rol `empleado` y área `General`. Para supervisores y bodega, crea o edita desde Firebase Console el documento con el UID de Authentication como ID. Ejemplo:
+
+   ```json
+   {
+     "uid": "UID_DE_AUTHENTICATION",
+     "correo": "persona@ejemplo.com",
+     "rol": "supervisor",
+     "area": "General"
+   }
+   ```
+
+   El valor de `rol` solo puede ser `empleado`, `supervisor` o `bodega`. Usa la misma área para empleados y supervisores que deban compartir solicitudes.
+
+5. La persona de bodega configura existencias desde la pestaña **Inventario**. Cada documento se guarda en `inventario/{insumoId}`; su ID debe coincidir exactamente con el ID del catálogo HTTP. La aplicación crea el primer stock y registra ajustes en `movimientos_inventario`.
+6. Las reservas y entregas confirmadas deben hacerse con conexión. Crear una solicitud sí puede hacerse sin conexión después de iniciar sesión y cargar los datos necesarios.
+
+No guardes contraseñas, claves privadas, cuentas de servicio ni contraseñas de firma dentro del repositorio. Las cuentas de prueba se comparten solo por el canal privado indicado por el docente.
 
 ## Ejecutar en Android
 
-Desde la carpeta del proyecto:
+Desde la raíz del proyecto:
 
 ```powershell
-flutter doctor
 flutter pub get
 flutter emulators
-```
-
-Si aparece el emulador `Pixel_8`, se puede iniciar así:
-
-```powershell
-flutter emulators --launch Pixel_8
 flutter devices
+flutter run -d <ID_DEL_DISPOSITIVO>
 ```
 
-Cuando el emulador aparezca en la lista de dispositivos, ejecuta la app usando su identificador. Por ejemplo:
+El ID se obtiene con `flutter devices` (por ejemplo `emulator-5554`). También puedes iniciar el emulador desde Android Studio > Device Manager.
 
-```powershell
-flutter run -d emulator-5554
-```
+## Catálogo HTTP
 
-El identificador puede variar. Usa el que muestre `flutter devices`. También puedes seleccionar el emulador desde **Device Manager** de Android Studio. Para un teléfono, activa las opciones de desarrollador y la depuración USB, conéctalo al computador y confirma que aparezca con `flutter devices`.
+La URL está en `lib/config/api_config.dart`. El servicio `lib/services/insumo_http_service.dart` implementa timeout, falta de conexión, códigos HTTP no exitosos y JSON inválido; `InsumoRepository` coordina HTTP y copia local.
 
-El proyecto actual no tiene configurados los destinos Web ni Windows. Para probarlo, usa un emulador o dispositivo Android.
-
-## Funciones implementadas
-
-- Pantalla inicial con navegación a Inicio, Insumos y Solicitudes.
-- Catálogo remoto de medicamentos vigentes publicado por INVIMA, con búsqueda y filtro por categoría.
-- Búsqueda HTTP con tiempo límite y mensajes para falta de conexión, errores del servidor y JSON inválido.
-- Copia local del catálogo en SQLite. Si falla una consulta posterior, la app intenta mostrar la última copia guardada.
-- Creación local de solicitudes desde el catálogo. Cada solicitud puede tener de 1 a 5 insumos distintos y cada línea permite solicitar de 1 a 20 unidades.
-- Guardado de solicitudes en SQLite, estado inicial `SOLICITADA` y estado de sincronización `PENDIENTE`.
-- Vista de las solicitudes guardadas para el usuario de demostración.
-- Sincronización de solicitudes con Cloud Firestore. Cada solicitud se guarda primero en SQLite y luego se envía a la colección `solicitudes`; si Firestore no responde, queda `PENDIENTE` y se puede reintentar desde **Mis solicitudes**.
-
-La API de INVIMA es un catálogo de medicamentos. Si el caso del equipo requiere otra clase de insumos, se debe acordar y configurar un endpoint que corresponda al dominio del proyecto.
-
-## Configuración del catálogo HTTP
-
-La URL está definida en `lib/config/api_config.dart`:
-
-```dart
-const String kInsumosUrl =
-    'https://www.datos.gov.co/resource/i7cb-raxc.json?%24limit=10';
-```
-
-El servicio está en `lib/services/insumo_http_service.dart`. Mapea los campos de INVIMA al modelo `Insumo`:
+Mapeo principal del endpoint INVIMA:
 
 - `producto` → nombre.
 - `descripcioncomercial` → descripción.
-- `unidadreferencia` (o campos alternativos) → unidad.
-- `descripcionatc` (o campos alternativos) → categoría.
-- `expedientecum` y `consecutivocum` → identificador cuando están disponibles.
+- `unidadreferencia` (con campos alternativos) → unidad.
+- `descripcionatc` (con campos alternativos) → categoría.
+- `expedientecum` y `consecutivocum` → identificador.
 
-El repositorio `lib/repositories/insumo_repository.dart` coordina la consulta HTTP y la copia local. Si se cambia la URL, revisa también el mapeo de campos del servicio para que coincida con la respuesta JSON.
+Si el endpoint cambia, verifica también que los IDs sean estables, ya que Firestore los usa como IDs de documentos de inventario.
 
-## Sincronización con Firestore
+## Reglas del proceso
 
-Firebase se inicializa en `main.dart` dentro de un `try/catch`. Si no inicia, la app sigue funcionando con los datos locales y las solicitudes quedan pendientes.
+- Cada solicitud contiene de 1 a 5 insumos distintos; cada línea solicita de 1 a 20 unidades enteras.
+- Una persona supervisora no aprueba solicitudes propias. Se conserva su UID y la fecha de decisión.
+- La aprobación verifica disponibilidad y reserva todas las líneas en una transacción; no deja reservas parciales ni stock negativo.
+- Cada entrega es positiva y no supera el saldo aprobado. El estado pasa a `ENTREGADA` solo cuando se completa todo; de lo contrario permanece `PARCIAL`.
+- Un ajuste de inventario no puede reducir existencias por debajo de lo reservado y registra actor, fecha y motivo.
+- Los roles, propiedad y acciones están protegidos por `firestore.rules`; ocultar botones en la interfaz no sustituye esas reglas.
 
-El flujo de `SolicitudRepository` es:
-
-1. Guarda la solicitud en SQLite con `syncState = PENDIENTE`.
-2. Intenta escribirla en Firestore con `SolicitudRemoteDataSource` (tiempo límite de 8 segundos).
-3. Si Firestore confirma, cambia `syncState` a `SINCRONIZADA`. Si falla, la deja `PENDIENTE` y guarda el motivo en `lastError`, sin mostrar un error al usuario.
-4. `sincronizarPendientes()` reintenta solo las solicitudes pendientes y devuelve cuántas se enviaron y cuántas siguen pendientes.
-
-El id de la solicitud se usa como id del documento y la escritura usa `SetOptions(merge: true)`, así que reenviar una solicitud actualiza el mismo documento en lugar de duplicarlo.
-
-Las reglas de Firestore están en `firestore.rules`. Son temporales: permiten leer y escribir solo la colección `solicitudes` hasta el 15 de diciembre de 2026, mientras se implementa Firebase Authentication.
-
-## Organización principal
-
-```text
-lib/
-├── config/          URL del catálogo
-├── database/        inicialización y tablas SQLite
-├── local/           acceso local al catálogo
-├── models/          Insumo, LineaSolicitud y Solicitud
-├── remote/          escritura de solicitudes en Firestore
-├── repositories/    coordinación de datos
-├── screens/         inicio, catálogo y creación de solicitudes
-└── services/        consulta HTTP
-```
-
-## Comprobaciones
+## Pruebas y QA
 
 ```powershell
-flutter analyze lib
+flutter analyze lib test
 flutter test
 ```
 
-La prueba de widget comprueba la pantalla inicial. `test/solicitud_repository_test.dart` comprueba la sincronización con una base SQLite en memoria y un Firestore simulado: solicitud sincronizada, solicitud pendiente cuando Firestore falla o no está configurado, reintento de pendientes y que las solicitudes ya sincronizadas no se reenvían. No se deben considerar estas comprobaciones como evidencia de que el APK release esté instalado y recorrido.
+La matriz y el estado de ejecución de casos están en [`docs/MATRIZ_QA.md`](docs/MATRIZ_QA.md). Las pruebas automatizadas cubren modelos, validación HTTP, persistencia local y reintentos. La verificación con tres cuentas Firebase, concurrencia real y consola Crashlytics debe completarse con la configuración Firebase del equipo.
 
-## Alcance todavía pendiente
+## Crashlytics
 
-Este estado del proyecto usa el identificador fijo `empleado-demo-001`. Aún no están implementados Firebase Authentication, los tres roles, reglas de seguridad por usuario, aprobación o rechazo, reservas de stock, entregas parciales ni ajustes de inventario. Firestore por ahora solo recibe las solicitudes creadas. Tampoco se ha entregado un APK release, una matriz QA o evidencia de Crashlytics.
+Crashlytics se activa al iniciar Firebase. En una compilación debug, abre **Inicio** y toca **Probar evento de Crashlytics**. Confirma que aparece un evento no fatal en Firebase Console > Crashlytics desde el dispositivo/emulador de prueba. Esta opción está excluida de la compilación release. La aplicación no envía contraseñas ni tokens como información de diagnóstico.
+
+## APK release
+
+La versión del artefacto está en `pubspec.yaml`. Para generar e instalar el APK académico:
+
+```powershell
+flutter build apk --release
+adb install -r build\app\outputs\flutter-apk\app-release.apk
+```
+
+El APK se compila con la firma de desarrollo configurada en Gradle. Para la entrega académica no se necesita una clave de producción ni publicar en una tienda. Después de cada nueva compilación de entrega, aumenta el número `+build` y actualiza la versión que figure en la matriz QA.
+
+## Estructura
+
+```text
+lib/
+├── config/          endpoint del catálogo
+├── database/        SQLite para catálogo y solicitudes pendientes
+├── local/           copia local del catálogo
+├── models/          insumos, líneas, solicitudes y perfiles
+├── remote/          operaciones y transacciones Firestore
+├── repositories/    coordinación de datos locales y remotos
+├── screens/         autenticación, catálogo, creación y operación por rol
+└── services/        HTTP y autenticación
+```

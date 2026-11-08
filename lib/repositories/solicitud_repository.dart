@@ -34,6 +34,7 @@ class SolicitudRepository {
     await database.insert(AppDatabase.tableSolicitudes, {
       'id': solicitud.id,
       'empleadoId': solicitud.empleadoId,
+      'area': solicitud.area,
       'fechaCreacion': solicitud.fechaCreacion.toIso8601String(),
       'estado': solicitud.estado.name,
       'lineasJson': jsonEncode(
@@ -57,16 +58,96 @@ class SolicitudRepository {
       whereArgs: [empleadoId],
       orderBy: 'fechaCreacion DESC',
     );
-    return rows.map(_fromRow).toList();
+    final local = rows.map(_fromRow).toList();
+    final remoteSource = remote;
+    if (remoteSource == null) return local;
+    try {
+      final remotas = await remoteSource.cargarSolicitudesDeEmpleado(
+        empleadoId,
+      );
+      final porId = {for (final solicitud in local) solicitud.id: solicitud};
+      for (final solicitud in remotas) {
+        porId[solicitud.id] = solicitud;
+        await database.insert(AppDatabase.tableSolicitudes, {
+          'id': solicitud.id,
+          'empleadoId': solicitud.empleadoId,
+          'area': solicitud.area,
+          'fechaCreacion': solicitud.fechaCreacion.toIso8601String(),
+          'estado': solicitud.estado.name,
+          'lineasJson': jsonEncode(
+            solicitud.lineas.map((linea) => linea.toJson()).toList(),
+          ),
+          'aprobadorId': solicitud.aprobadorId,
+          'fechaDecision': solicitud.fechaDecision?.toIso8601String(),
+          'syncState': syncSincronizada,
+          'updatedAt': DateTime.now().toIso8601String(),
+          'lastError': null,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      return porId.values.toList()
+        ..sort((a, b) => b.fechaCreacion.compareTo(a.fechaCreacion));
+    } catch (_) {
+      // En modo sin conexión se conserva lo que ya está guardado en el teléfono.
+      return local;
+    }
   }
 
-  // Reintenta únicamente las solicitudes que siguen pendientes.
-  Future<ResultadoSincronizacion> sincronizarPendientes() async {
+  Future<void> cancelar(String solicitudId, String empleadoId) async {
+    final remoteSource = remote;
+    if (remoteSource == null) {
+      throw StateError('Se requiere conexión para confirmar la cancelación.');
+    }
+    await remoteSource.cancelar(
+      solicitudId: solicitudId,
+      empleadoId: empleadoId,
+    );
+    final database = await _database.database;
+    await database.update(
+      AppDatabase.tableSolicitudes,
+      {
+        'estado': 'CANCELADA',
+        'updatedAt': DateTime.now().toIso8601String(),
+        'syncState': syncSincronizada,
+        'lastError': null,
+      },
+      where: 'id = ? AND empleadoId = ? AND estado = ?',
+      whereArgs: [solicitudId, empleadoId, 'SOLICITADA'],
+    );
+  }
+
+  Future<void> descartarSolicitudRechazada(
+    String solicitudId,
+    String empleadoId,
+  ) async {
     final database = await _database.database;
     final rows = await database.query(
       AppDatabase.tableSolicitudes,
-      where: 'syncState = ?',
-      whereArgs: [syncPendiente],
+      where: 'id = ? AND empleadoId = ? AND syncState = ?',
+      whereArgs: [solicitudId, empleadoId, syncPendiente],
+      limit: 1,
+    );
+    if (rows.isEmpty ||
+        !'${rows.single['lastError']}'.contains('permission-denied')) {
+      throw StateError(
+        'Solo se puede descartar un envío que Firebase rechazó por permisos.',
+      );
+    }
+    await database.delete(
+      AppDatabase.tableSolicitudes,
+      where: 'id = ? AND empleadoId = ?',
+      whereArgs: [solicitudId, empleadoId],
+    );
+  }
+
+  // Reintenta únicamente las solicitudes que siguen pendientes.
+  Future<ResultadoSincronizacion> sincronizarPendientes({
+    required String empleadoId,
+  }) async {
+    final database = await _database.database;
+    final rows = await database.query(
+      AppDatabase.tableSolicitudes,
+      where: 'syncState = ? AND empleadoId = ?',
+      whereArgs: [syncPendiente, empleadoId],
       orderBy: 'fechaCreacion ASC',
     );
 
@@ -138,14 +219,30 @@ class SolicitudRepository {
     final json = <String, dynamic>{
       'id': row['id'],
       'empleadoId': row['empleadoId'],
+      'area': row['area'] ?? 'General',
       'fechaCreacion': row['fechaCreacion'],
       'estado': row['estado'],
       'lineas': lineas,
       'aprobadorId': row['aprobadorId'],
       'fechaDecision': row['fechaDecision'],
     };
-    return Solicitud.fromJson(
-      json,
-    ).copyWith(pendienteSync: row['syncState'] == syncPendiente);
+    return Solicitud.fromJson(json).copyWith(
+      pendienteSync: row['syncState'] == syncPendiente,
+      syncError: _mensajeSync(row['lastError'] as String?),
+      limpiarSyncError: row['lastError'] == null,
+    );
+  }
+
+  String? _mensajeSync(String? error) {
+    if (error == null || error.isEmpty) return null;
+    if (error.contains('permission-denied')) {
+      return 'Firebase rechazó el envío por permisos. Revisa el perfil y las reglas; puedes descartarlo.';
+    }
+    if (error.contains('unavailable') ||
+        error.contains('deadline-exceeded') ||
+        error.contains('TimeoutException')) {
+      return 'Firebase no respondió. El envío sigue pendiente; revisa la conexión e inténtalo de nuevo.';
+    }
+    return 'Firebase no confirmó el envío. Revisa tu conexión y vuelve a intentarlo.';
   }
 }

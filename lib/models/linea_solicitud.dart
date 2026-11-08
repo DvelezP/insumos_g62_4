@@ -33,10 +33,10 @@ class LineaSolicitud {
   }
 
   Map<String, dynamic> toJson() => {
-        'insumoId': insumoId,
-        'cantidadSolicitada': cantidadSolicitada,
-        'cantidadEntregada': cantidadEntregada,
-      };
+    'insumoId': insumoId,
+    'cantidadSolicitada': cantidadSolicitada,
+    'cantidadEntregada': cantidadEntregada,
+  };
 
   LineaSolicitud copyWith({
     String? insumoId,

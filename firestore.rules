@@ -2,14 +2,197 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Solicitudes de insumos: acceso temporal mientras se implementa
-    // Firebase Authentication. Caduca el 15 de diciembre de 2026.
-    match /solicitudes/{solicitudId} {
-      allow read, write: if request.time < timestamp.date(2026, 12, 15);
+    function signedIn() {
+      return request.auth != null;
+    }
+    function role() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol;
+    }
+    function employee() { return signedIn() && role() == 'empleado'; }
+    function supervisor() { return signedIn() && role() == 'supervisor'; }
+    function warehouse() { return signedIn() && role() == 'bodega'; }
+    function movimientoCoherente(insumoId) {
+      let movimiento = getAfter(/databases/$(database)/documents/movimientos_inventario/$(request.resource.data.ultimoMovimientoId)).data;
+      return movimiento.insumoId == insumoId
+        && movimiento.actorId == request.auth.uid
+        && movimiento.cambio == request.resource.data.existencias - resource.data.existencias
+        && movimiento.motivo is string
+        && movimiento.motivo.size() > 0;
+    }
+    function movimientoInicialCoherente(insumoId) {
+      let movimiento = getAfter(/databases/$(database)/documents/movimientos_inventario/$(request.resource.data.ultimoMovimientoId)).data;
+      return movimiento.insumoId == insumoId
+        && movimiento.actorId == request.auth.uid
+        && movimiento.cambio == request.resource.data.existencias
+        && movimiento.motivo is string
+        && movimiento.motivo.size() > 0;
+    }
+    function lineaValida(linea) {
+      return linea is map
+        && linea.insumoId is string
+        && linea.cantidadSolicitada is int
+        && linea.cantidadSolicitada >= 1
+        && linea.cantidadSolicitada <= 20
+        && linea.cantidadEntregada == 0;
+    }
+    function lineaEntregaValida(anterior, nueva) {
+      return nueva is map
+        && nueva.insumoId == anterior.insumoId
+        && nueva.cantidadSolicitada == anterior.cantidadSolicitada
+        && nueva.cantidadEntregada is int
+        && nueva.cantidadEntregada >= anterior.cantidadEntregada
+        && nueva.cantidadEntregada <= nueva.cantidadSolicitada;
+    }
+    function lineasEntregaValidas() {
+      let anteriores = resource.data.lineas;
+      let nuevas = request.resource.data.lineas;
+      return nuevas is list && nuevas.size() == anteriores.size()
+        && (nuevas.size() < 1 || lineaEntregaValida(anteriores[0], nuevas[0]))
+        && (nuevas.size() < 2 || lineaEntregaValida(anteriores[1], nuevas[1]))
+        && (nuevas.size() < 3 || lineaEntregaValida(anteriores[2], nuevas[2]))
+        && (nuevas.size() < 4 || lineaEntregaValida(anteriores[3], nuevas[3]))
+        && (nuevas.size() < 5 || lineaEntregaValida(anteriores[4], nuevas[4]));
+    }
+    function hayEntregaNueva() {
+      let anteriores = resource.data.lineas;
+      let nuevas = request.resource.data.lineas;
+      return (nuevas.size() > 0 && nuevas[0].cantidadEntregada > anteriores[0].cantidadEntregada)
+        || (nuevas.size() > 1 && nuevas[1].cantidadEntregada > anteriores[1].cantidadEntregada)
+        || (nuevas.size() > 2 && nuevas[2].cantidadEntregada > anteriores[2].cantidadEntregada)
+        || (nuevas.size() > 3 && nuevas[3].cantidadEntregada > anteriores[3].cantidadEntregada)
+        || (nuevas.size() > 4 && nuevas[4].cantidadEntregada > anteriores[4].cantidadEntregada);
+    }
+    function entregaCompleta() {
+      let lineas = request.resource.data.lineas;
+      return lineas.size() > 0 && lineas[0].cantidadEntregada == lineas[0].cantidadSolicitada
+        && (lineas.size() < 2 || lineas[1].cantidadEntregada == lineas[1].cantidadSolicitada)
+        && (lineas.size() < 3 || lineas[2].cantidadEntregada == lineas[2].cantidadSolicitada)
+        && (lineas.size() < 4 || lineas[3].cantidadEntregada == lineas[3].cantidadSolicitada)
+        && (lineas.size() < 5 || lineas[4].cantidadEntregada == lineas[4].cantidadSolicitada);
+    }
+    function solicitudNuevaValida() {
+      let lineas = request.resource.data.lineas;
+      return lineas is list
+        && lineas.size() >= 1 && lineas.size() <= 5
+        && lineaValida(lineas[0])
+        && (lineas.size() < 2 || (lineaValida(lineas[1]) && lineas[0].insumoId != lineas[1].insumoId))
+        && (lineas.size() < 3 || (lineaValida(lineas[2]) && ![lineas[0].insumoId, lineas[1].insumoId].hasAny([lineas[2].insumoId])))
+        && (lineas.size() < 4 || (lineaValida(lineas[3]) && ![lineas[0].insumoId, lineas[1].insumoId, lineas[2].insumoId].hasAny([lineas[3].insumoId])))
+        && (lineas.size() < 5 || (lineaValida(lineas[4]) && ![lineas[0].insumoId, lineas[1].insumoId, lineas[2].insumoId, lineas[3].insumoId].hasAny([lineas[4].insumoId])));
     }
 
-    // Todo lo demás queda denegado.
+    match /usuarios/{uid} {
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.rol == 'empleado';
+      allow read: if signedIn() && request.auth.uid == uid;
+      // Los roles privilegiados se asignan manualmente desde Firebase Console.
+      allow update, delete: if false;
+    }
+
+    match /solicitudes/{solicitudId} {
+      allow create: if employee()
+        && request.resource.data.empleadoId == request.auth.uid
+        && request.resource.data.area == get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.area
+        && request.resource.data.estado == 'SOLICITADA'
+        && solicitudNuevaValida();
+      allow read: if signedIn() && (
+        resource.data.empleadoId == request.auth.uid
+        || (supervisor() && resource.data.area == get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.area)
+        || warehouse()
+      );
+      allow update: if signedIn() && (
+        (supervisor()
+          && resource.data.estado == 'SOLICITADA'
+          && resource.data.empleadoId != request.auth.uid
+          && resource.data.area == get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.area
+          && request.resource.data.estado in ['APROBADA', 'RECHAZADA']
+          && request.resource.data.fechaDecision == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'aprobadorId', 'fechaDecision', 'motivoDecision'])
+          && request.resource.data.empleadoId == resource.data.empleadoId
+          && request.resource.data.aprobadorId == request.auth.uid
+          && (request.resource.data.estado != 'RECHAZADA'
+            || (request.resource.data.motivoDecision is string && request.resource.data.motivoDecision.size() > 0)))
+        || (warehouse()
+          && resource.data.estado in ['APROBADA', 'PARCIAL']
+          && request.resource.data.estado in ['PARCIAL', 'ENTREGADA']
+          && request.resource.data.ultimaEntregaPor == request.auth.uid
+          && request.resource.data.ultimaEntregaEn == request.time
+          && lineasEntregaValidas()
+          && hayEntregaNueva()
+          && ((request.resource.data.estado == 'ENTREGADA' && entregaCompleta())
+            || (request.resource.data.estado == 'PARCIAL' && !entregaCompleta()))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lineas', 'estado', 'ultimaEntregaPor', 'ultimaEntregaEn', 'motivoEntrega'])
+          && request.resource.data.empleadoId == resource.data.empleadoId
+          && request.resource.data.aprobadorId == resource.data.aprobadorId)
+        || (employee()
+          && resource.data.empleadoId == request.auth.uid
+          && resource.data.estado == 'SOLICITADA'
+          && request.resource.data.estado == 'SOLICITADA'
+          && request.resource.data == resource.data)
+        || (employee()
+          && resource.data.empleadoId == request.auth.uid
+          && resource.data.estado == 'SOLICITADA'
+          && request.resource.data.estado == 'CANCELADA'
+          && request.resource.data.fechaCancelacion == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'fechaCancelacion'])
+          && request.resource.data.empleadoId == resource.data.empleadoId)
+      );
+      allow delete: if false;
+    }
+
+    match /inventario/{insumoId} {
+      allow read: if signedIn();
+      allow create: if warehouse()
+        && request.resource.data.existencias is int
+        && request.resource.data.existencias > 0
+        && request.resource.data.reservado == 0
+        && movimientoInicialCoherente(insumoId);
+      allow update: if (
+        supervisor()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reservado', 'actualizadoEn'])
+        && request.resource.data.reservado >= resource.data.reservado
+        && request.resource.data.reservado <= resource.data.existencias
+      ) || (
+        warehouse()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['existencias', 'reservado', 'actualizadoEn', 'ultimoMovimientoId'])
+        && request.resource.data.existencias >= request.resource.data.reservado
+        && request.resource.data.reservado >= 0
+        && (
+          (request.resource.data.existencias < resource.data.existencias
+            && request.resource.data.reservado < resource.data.reservado
+            && resource.data.existencias - request.resource.data.existencias == resource.data.reservado - request.resource.data.reservado)
+          || (request.resource.data.reservado == resource.data.reservado
+            && request.resource.data.existencias != resource.data.existencias
+            && request.resource.data.ultimoMovimientoId != resource.data.ultimoMovimientoId
+            && movimientoCoherente(insumoId))
+        )
+      );
+      allow delete: if false;
+    }
+
+    match /movimientos_inventario/{movimientoId} {
+      allow create: if warehouse()
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.insumoId is string
+        && request.resource.data.motivo is string
+        && request.resource.data.motivo.size() > 0
+        && request.resource.data.fecha == request.time
+        && getAfter(/databases/$(database)/documents/inventario/$(request.resource.data.insumoId)).data.ultimoMovimientoId == movimientoId;
+      allow read: if supervisor() || warehouse();
+      allow update, delete: if false;
+    }
+
+    match /operaciones_entrega/{operationId} {
+      allow create: if warehouse()
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.solicitudId is string
+        && request.resource.data.cantidades is map
+        && request.resource.data.fecha == request.time;
+      allow read: if warehouse();
+      allow update, delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

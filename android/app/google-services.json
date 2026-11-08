@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "121719356679",
-    "project_id": "insumos-g62-4",
-    "storage_bucket": "insumos-g62-4.firebasestorage.app"
+    "project_number": "1049214466397",
+    "project_id": "insumosg62",
+    "storage_bucket": "insumosg62.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:121719356679:android:46289f844204f84b4499a2",
+        "mobilesdk_app_id": "1:1049214466397:android:9dab07e4986c7f6ffb10b4",
         "android_client_info": {
           "package_name": "co.edu.udem.insumos_g62_4"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBe867FsOLKVdzfV_lRCs9U7tDqTecBw5Y"
+          "current_key": "AIzaSyBpsheDhSnTLEW7Hjk0DrpXqRxk-KbWPGw"
         }
       ],
       "services": {

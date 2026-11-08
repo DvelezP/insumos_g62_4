@@ -13,10 +13,14 @@ class CreateRequestScreen extends StatefulWidget {
     super.key,
     required this.insumos,
     required this.repository,
+    this.empleadoId = empleadoDemoId,
+    this.area = 'General',
   });
 
   final List<Insumo> insumos;
   final SolicitudRepository repository;
+  final String empleadoId;
+  final String area;
 
   @override
   State<CreateRequestScreen> createState() => _CreateRequestScreenState();
@@ -42,9 +46,10 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> {
     try {
       final solicitud = Solicitud(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
-        empleadoId: empleadoDemoId,
+        empleadoId: widget.empleadoId,
         fechaCreacion: DateTime.now(),
         estado: EstadoSolicitud.SOLICITADA,
+        area: widget.area,
         lineas: widget.insumos
             .map(
               (insumo) => LineaSolicitud(

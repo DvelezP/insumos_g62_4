@@ -44,72 +44,39 @@ class _OperacionScreenState extends State<OperacionScreen> {
         .map((linea) => Map<String, dynamic>.from(linea as Map))
         .toList();
     final cantidades = <String, int>{};
-    final controladores = <String, TextEditingController>{};
-    final motivoController = TextEditingController();
+    final campos = <_DialogTextInput>[];
     for (final linea in lineas) {
-      controladores[linea['insumoId'] as String] = TextEditingController(
-        text: '0',
+      final id = linea['insumoId'] as String;
+      final saldo =
+          (linea['cantidadSolicitada'] as int) -
+          ((linea['cantidadEntregada'] as int?) ?? 0);
+      campos.add(
+        _DialogTextInput(
+          label: '$id · pendiente $saldo',
+          keyboardType: TextInputType.number,
+          initialValue: '0',
+        ),
       );
     }
-    final guardar = await showDialog<bool>(
+    campos.add(
+      const _DialogTextInput(label: 'Observación', required: false),
+    );
+    final valores = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Registrar entrega parcial'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...lineas.map((linea) {
-                final id = linea['insumoId'] as String;
-                final saldo =
-                    (linea['cantidadSolicitada'] as int) -
-                    ((linea['cantidadEntregada'] as int?) ?? 0);
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: TextField(
-                    controller: controladores[id],
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: '$id · pendiente $saldo',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                );
-              }),
-              TextField(
-                controller: motivoController,
-                decoration: const InputDecoration(
-                  labelText: 'Observación',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Registrar'),
-          ),
-        ],
+      builder: (context) => _TextInputsDialog(
+        title: 'Registrar entrega parcial',
+        fields: campos,
+        submitLabel: 'Registrar',
       ),
     );
-    if (guardar != true || !mounted) {
-      motivoController.dispose();
-      for (final c in controladores.values) {
-        c.dispose();
-      }
-      return;
-    }
+    if (valores == null || !mounted) return;
+
     var valido = true;
-    for (final entry in controladores.entries) {
-      final cantidad = int.tryParse(entry.value.text);
+    for (var i = 0; i < lineas.length; i++) {
+      final id = lineas[i]['insumoId'] as String;
+      final cantidad = int.tryParse(valores[i]);
       if (cantidad == null || cantidad < 0) valido = false;
-      cantidades[entry.key] = cantidad ?? 0;
+      cantidades[id] = cantidad ?? 0;
     }
     if (!valido || cantidades.values.every((value) => value == 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,7 +92,7 @@ class _OperacionScreenState extends State<OperacionScreen> {
           solicitudId: solicitud['id'] as String,
           encargadoId: widget.perfil.uid,
           cantidades: cantidades,
-          motivo: motivoController.text.trim(),
+          motivo: valores.last.trim(),
           operationId: SolicitudRemoteDataSource.idOperacionEntrega(
             solicitudId: solicitud['id'] as String,
             lineas: lineas,
@@ -134,44 +101,24 @@ class _OperacionScreenState extends State<OperacionScreen> {
         ),
       );
     }
-    motivoController.dispose();
-    for (final c in controladores.values) {
-      c.dispose();
-    }
   }
 
   Future<String?> _pedirMotivo(String titulo, {required bool requerido}) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
+    final valores = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(titulo),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: InputDecoration(
-            labelText: requerido
-                ? 'Motivo obligatorio'
-                : 'Observación opcional',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (requerido && controller.text.trim().isEmpty) return;
-              Navigator.pop(context, controller.text.trim());
-            },
-            child: const Text('Continuar'),
+      builder: (context) => _TextInputsDialog(
+        title: titulo,
+        fields: [
+          _DialogTextInput(
+            label: requerido ? 'Motivo obligatorio' : 'Observación opcional',
+            maxLines: 3,
+            required: requerido,
           ),
         ],
+        submitLabel: 'Continuar',
       ),
     );
-    controller.dispose();
-    return result;
+    return valores?.first.trim();
   }
 
   Future<void> _operar(Future<void> Function() action) async {
@@ -376,109 +323,65 @@ class _InventarioPanel extends StatelessWidget {
     BuildContext context,
     Insumo insumo,
   ) async {
-    final cantidad = TextEditingController();
-    final motivo = TextEditingController();
-    final enviar = await showDialog<bool>(
+    final valores = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Crear stock de ${insumo.nombre}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: cantidad,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Existencias iniciales',
-              ),
-            ),
-            TextField(
-              controller: motivo,
-              decoration: const InputDecoration(labelText: 'Motivo'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+      builder: (context) => _TextInputsDialog(
+        title: 'Crear stock de ${insumo.nombre}',
+        fields: const [
+          _DialogTextInput(
+            label: 'Existencias iniciales',
+            keyboardType: TextInputType.number,
+            required: true,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Crear'),
-          ),
+          _DialogTextInput(label: 'Motivo', required: true),
         ],
+        submitLabel: 'Crear',
       ),
     );
-    final value = int.tryParse(cantidad.text);
-    if (enviar == true && context.mounted) {
-      if (value == null || value <= 0 || motivo.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Indica una cantidad positiva y el motivo del registro inicial.',
-            ),
+    if (valores == null || !context.mounted) return;
+    final value = int.tryParse(valores[0]);
+    if (value == null || value <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Indica una cantidad positiva y el motivo del registro inicial.',
           ),
-        );
-      } else {
-        await onInicializar(insumo.id, value, motivo.text.trim());
-      }
+        ),
+      );
+    } else {
+      await onInicializar(insumo.id, value, valores[1].trim());
     }
-    cantidad.dispose();
-    motivo.dispose();
   }
 
   Future<void> _mostrarAjuste(BuildContext context, Insumo insumo) async {
-    final delta = TextEditingController();
-    final motivo = TextEditingController();
-    final enviar = await showDialog<bool>(
+    final valores = await showDialog<List<String>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Ajustar ${insumo.nombre}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: delta,
-              keyboardType: const TextInputType.numberWithOptions(signed: true),
-              decoration: const InputDecoration(
-                labelText: 'Cambio (+/- unidades)',
-              ),
-            ),
-            TextField(
-              controller: motivo,
-              decoration: const InputDecoration(labelText: 'Motivo'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+      builder: (context) => _TextInputsDialog(
+        title: 'Ajustar ${insumo.nombre}',
+        fields: const [
+          _DialogTextInput(
+            label: 'Cambio (+/- unidades)',
+            keyboardType: TextInputType.numberWithOptions(signed: true),
+            required: true,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Guardar'),
-          ),
+          _DialogTextInput(label: 'Motivo', required: true),
         ],
+        submitLabel: 'Guardar',
       ),
     );
-    final value = int.tryParse(delta.text);
-    if (enviar == true && context.mounted) {
-      if (value == null || value == 0 || motivo.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Indica un cambio entero distinto de cero y su motivo.',
-            ),
+    if (valores == null || !context.mounted) return;
+    final value = int.tryParse(valores[0]);
+    if (value == null || value == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Indica un cambio entero distinto de cero y su motivo.',
           ),
-        );
-      } else {
-        await onAjustar(insumo.id, value, motivo.text.trim());
-      }
+        ),
+      );
+    } else {
+      await onAjustar(insumo.id, value, valores[1].trim());
     }
-    delta.dispose();
-    motivo.dispose();
   }
 
   @override
@@ -535,5 +438,99 @@ class _InventarioPanel extends StatelessWidget {
         },
       );
     },
+  );
+}
+
+class _DialogTextInput {
+  const _DialogTextInput({
+    required this.label,
+    this.keyboardType = TextInputType.text,
+    this.maxLines = 1,
+    this.required = false,
+    this.initialValue = '',
+  });
+
+  final String label;
+  final TextInputType keyboardType;
+  final int maxLines;
+  final bool required;
+  final String initialValue;
+}
+
+class _TextInputsDialog extends StatefulWidget {
+  const _TextInputsDialog({
+    required this.title,
+    required this.fields,
+    required this.submitLabel,
+  });
+
+  final String title;
+  final List<_DialogTextInput> fields;
+  final String submitLabel;
+
+  @override
+  State<_TextInputsDialog> createState() => _TextInputsDialogState();
+}
+
+class _TextInputsDialogState extends State<_TextInputsDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final List<TextEditingController> _controllers = widget.fields
+      .map((field) => TextEditingController(text: field.initialValue))
+      .toList();
+
+  @override
+  void dispose() {
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: SingleChildScrollView(
+      child: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < widget.fields.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              TextFormField(
+                controller: _controllers[i],
+                keyboardType: widget.fields[i].keyboardType,
+                maxLines: widget.fields[i].maxLines,
+                decoration: InputDecoration(
+                  labelText: widget.fields[i].label,
+                  border: const OutlineInputBorder(),
+                ),
+                validator: widget.fields[i].required
+                    ? (value) => value == null || value.trim().isEmpty
+                          ? 'Este campo es obligatorio.'
+                          : null
+                    : null,
+              ),
+            ],
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: () {
+          if (!_formKey.currentState!.validate()) return;
+          Navigator.pop(
+            context,
+            _controllers.map((controller) => controller.text).toList(),
+          );
+        },
+        child: Text(widget.submitLabel),
+      ),
+    ],
   );
 }

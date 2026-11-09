@@ -209,7 +209,7 @@ class _DashboardScreen extends StatelessWidget {
               subtitle: Text('Crea solicitudes y consulta su estado'),
             ),
           ),
-        if (kDebugMode)
+        if (kDebugMode && !kIsWeb)
           Card(
             child: ListTile(
               leading: const Icon(Icons.bug_report_outlined),
@@ -485,40 +485,30 @@ class _RequestsScreenState extends State<_RequestsScreen> {
                         ),
                         title: Text('Solicitud ${solicitud.id}'),
                         subtitle: Text(
-                          '$fechaTexto · Área ${solicitud.area} · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)\n${solicitud.lineas.map((linea) => '${linea.insumoId}: ${linea.cantidadEntregada}/${linea.cantidadSolicitada}').join(' · ')}${solicitud.syncError == null ? '' : '\n${solicitud.syncError}'}',
+                          '$fechaTexto · Área ${solicitud.area} · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)\nEstado: ${solicitud.estado.name} · ${solicitud.pendienteSync ? 'Pendiente de sincronizar' : 'Sincronizada'}\n${solicitud.lineas.map((linea) => '${linea.insumoId}: ${linea.cantidadEntregada}/${linea.cantidadSolicitada}').join(' · ')}${solicitud.syncError == null ? '' : '\n${solicitud.syncError}'}',
                         ),
                         isThreeLine: true,
-                        trailing: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Chip(label: Text(solicitud.estado.name)),
-                            _SyncStatusLabel(
-                              pendiente: solicitud.pendienteSync,
-                            ),
-                            if (solicitud.pendienteSync &&
+                        trailing:
+                            solicitud.pendienteSync &&
                                 solicitud.syncError?.contains(
                                       'puedes descartarlo',
                                     ) ==
-                                    true)
-                              IconButton(
+                                    true
+                            ? IconButton(
                                 tooltip: 'Descartar envío rechazado',
                                 visualDensity: VisualDensity.compact,
                                 onPressed: () => _descartar(solicitud),
                                 icon: const Icon(Icons.delete_outline),
                               )
-                            else if (solicitud.estado ==
-                                    EstadoSolicitud.SOLICITADA &&
-                                !solicitud.pendienteSync)
-                              IconButton(
+                            : solicitud.estado == EstadoSolicitud.SOLICITADA &&
+                                  !solicitud.pendienteSync
+                            ? IconButton(
                                 tooltip: 'Cancelar solicitud',
                                 visualDensity: VisualDensity.compact,
-                                onPressed: solicitud.pendienteSync
-                                    ? null
-                                    : () => _cancelar(solicitud),
+                                onPressed: () => _cancelar(solicitud),
                                 icon: const Icon(Icons.cancel_outlined),
-                              ),
-                          ],
-                        ),
+                              )
+                            : null,
                       ),
                     );
                   },
@@ -571,33 +561,6 @@ class _PendingSyncBanner extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SyncStatusLabel extends StatelessWidget {
-  const _SyncStatusLabel({required this.pendiente});
-
-  final bool pendiente;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          pendiente ? Icons.cloud_off_outlined : Icons.cloud_done_outlined,
-          size: 12,
-          color: pendiente ? colors.error : colors.primary,
-        ),
-        const SizedBox(width: 4),
-        Text(
-          pendiente ? 'Pendiente' : 'Sincronizada',
-          style: const TextStyle(fontSize: 10),
-        ),
-      ],
     );
   }
 }

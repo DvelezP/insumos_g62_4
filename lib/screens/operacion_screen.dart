@@ -283,7 +283,8 @@ class _OperacionScreenState extends State<OperacionScreen> {
                         ),
                       ],
                     )
-                  else
+                  // Solo bodega registra entregas; el supervisor solo decide.
+                  else if (!aprobaciones)
                     Align(
                       alignment: Alignment.centerRight,
                       child: FilledButton.icon(

@@ -118,7 +118,9 @@ class SolicitudRemoteDataSource {
     final snapshot = await firestore
         .collection(coleccion)
         .where('empleadoId', isEqualTo: empleadoId)
-        .get()
+        // Solo el servidor confirma la sincronización: la caché offline de
+        // Firestore incluye escrituras aún no enviadas y no debe usarse aquí.
+        .get(const GetOptions(source: Source.server))
         .timeout(const Duration(seconds: 12));
     return snapshot.docs.map((doc) {
       final data = doc.data();

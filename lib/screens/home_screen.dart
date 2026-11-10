@@ -421,50 +421,6 @@ class _RequestsScreenState extends State<_RequestsScreen> {
                 onRefresh: () async {
                   setState(_loadRequests);
                   await _requestsFuture;
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: solicitudes.length,
-                itemBuilder: (context, index) {
-                  final solicitud = solicitudes[index];
-                  final fecha = solicitud.fechaCreacion.toLocal();
-                  final fechaTexto =
-                      '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
-                  final cantidadTotal = solicitud.lineas.fold<int>(
-                    0,
-                    (total, linea) => total + linea.cantidadSolicitada,
-                  );
-                  return Card(
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        child: Icon(Icons.assignment_outlined),
-                      ),
-                      title: Text('Solicitud ${solicitud.id}'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$fechaTexto · ${solicitud.lineas.length} insumo(s) · $cantidadTotal unidad(es)',
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Chip(
-                                label: Text(solicitud.estado.name),
-                                visualDensity: VisualDensity.compact,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              _SyncStatusLabel(
-                                pendiente: solicitud.pendienteSync,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
                 },
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),

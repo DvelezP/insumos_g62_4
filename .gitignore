@@ -46,3 +46,6 @@ app.*.map.json
 
 # Firebase local CLI state
 .firebase/
+
+# Paquete de entrega local (APK y ZIP)
+/entrega/

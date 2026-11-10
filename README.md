@@ -2,6 +2,11 @@
 
 Aplicación Android desarrollada con Flutter y Dart para solicitar insumos internos, aprobar solicitudes, reservar existencias y registrar entregas parciales. El flujo requiere una cuenta autenticada y usa Firebase para compartir cambios entre los roles.
 
+- **Caso:** G62-4 · Solicitudes de insumos con entrega parcial (Desarrollo Móvil, Universidad de Medellín, 2026-2).
+- **Integrantes:** David Vélez Pino y David Santiago Rodríguez Ruiz.
+- **Versión final probada:** 1.1.1+4. El APK release se probó en el emulador Android `sdk_gphone16k_x86_64` (Android 17). Ver la [matriz QA](docs/MATRIZ_QA.md).
+- **Roles:** empleado (rol básico al registrarse), supervisor y encargado de bodega.
+
 ## Estado actual
 
 - **Empleado:** consulta el catálogo remoto, busca y filtra insumos, crea solicitudes de 1 a 5 insumos (1–20 unidades por línea), las consulta y cancela las que siguen solicitadas.
@@ -120,7 +125,27 @@ flutter analyze lib test
 flutter test
 ```
 
-La matriz y el estado de ejecución de casos están en [`docs/MATRIZ_QA.md`](docs/MATRIZ_QA.md). Las pruebas automatizadas cubren modelos, validación HTTP, persistencia local y reintentos. La verificación con tres cuentas Firebase, concurrencia real y consola Crashlytics debe completarse con la configuración Firebase del equipo.
+La matriz, el registro de defectos, las limitaciones conocidas y el checklist de release están en [`docs/MATRIZ_QA.md`](docs/MATRIZ_QA.md). Las capturas de cada caso manual están en [`docs/evidencias/`](docs/evidencias/). Las pruebas automatizadas cubren modelos, validación HTTP, persistencia local y reintentos. Los casos manuales cubren los tres roles, los escenarios de aceptación del caso, el modo sin conexión y el APK release.
+
+## Datos de prueba y escenarios
+
+- Catálogo HTTP: 10 registros del endpoint configurado.
+- Cuentas: una por rol (`empleado`, `supervisor`, `bodega`), todas con área `General`. Las credenciales se entregan solo por el canal privado del docente.
+- Operaciones de negocio repartidas en todos los estados: SOLICITADA, APROBADA, PARCIAL, ENTREGADA, RECHAZADA y CANCELADA. Los pasos para reproducirlas están en [`docs/ESCENARIOS_QA_MANUAL.md`](docs/ESCENARIOS_QA_MANUAL.md) y los resultados en la matriz QA.
+
+## Privacidad y datos recolectados
+
+- **Qué se guarda:** correo, UID, rol y área del perfil (`usuarios/{uid}`); solicitudes con sus líneas, aprobador, fechas y motivos; movimientos de inventario con actor y motivo. En el teléfono, SQLite guarda las solicitudes de la cuenta activa y una copia del catálogo; SharedPreferences guarda solo el filtro de categoría.
+- **Para qué:** operar el proceso de solicitud, aprobación, reserva y entrega, y dejar trazabilidad de quién decidió o movió inventario.
+- **Acceso por roles:** el empleado ve solo sus solicitudes. El supervisor ve las de su área y decide sobre las de otras personas. Bodega ve las aprobadas y el inventario. Lo garantizan las reglas de `firestore.rules`, no solo la interfaz.
+- **Crashlytics:** registra errores no controlados, con versión y modelo del dispositivo, para diagnóstico. No se envían contraseñas, tokens ni datos personales sensibles. Las contraseñas y tokens tampoco se guardan en SQLite, SharedPreferences ni en los logs.
+
+## Límites conocidos
+
+- Una sola organización y un solo almacén; sin compras a proveedores, costos ni códigos de barras.
+- El catálogo HTTP usa datos públicos de medicamentos INVIMA como referencia de insumos.
+- La consulta del consumo por área para el supervisor no está implementada.
+- Los defectos abiertos y las limitaciones de las pruebas están en la matriz QA.
 
 ## Crashlytics
 
@@ -135,7 +160,7 @@ flutter build apk --release
 adb install -r build\app\outputs\flutter-apk\app-release.apk
 ```
 
-El APK se compila con la firma de desarrollo configurada en Gradle. Para la entrega académica no se necesita una clave de producción ni publicar en una tienda. Después de cada nueva compilación de entrega, aumenta el número `+build` y actualiza la versión que figure en la matriz QA.
+El APK release se firma con la **clave debug de Android**, la firma de desarrollo (`signingConfig = signingConfigs.getByName("debug")` en `android/app/build.gradle.kts`). Compilar en modo release no implica usar una firma de producción. Para la entrega académica no se necesita una clave de producción ni publicar en una tienda. Después de cada nueva compilación de entrega, aumenta el número `+build` y actualiza la versión que figure en la matriz QA.
 
 ## Estructura
 
